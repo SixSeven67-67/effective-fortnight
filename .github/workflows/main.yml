@@ -1,0 +1,76 @@
+name: VPS Webtop 14GB - Cloudflare (6 Horas)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  vps-session:
+    runs-on: ubuntu-latest
+    # Tiempo límite estricto de GitHub: 6 horas (360 min)
+    timeout-minutes: 360
+    
+    steps:
+      - name: "1. Preparar Entorno"
+        uses: actions/checkout@v4
+
+      - name: "2. Desplegar Webtop (XFCE - Privileged)"
+        run: |
+          # Iniciamos Webtop en segundo plano (-d)
+          # CAMBIO: Usamos ubuntu-xfce porque 'ubuntu-budgie' NO existe oficialmente.
+          # XFCE es el más equilibrado y estable.
+          docker run -d \
+            --name=webtop \
+            --privileged \
+            --security-opt seccomp=unconfined \
+            -e PUID=1000 -e PGID=1000 \
+            -e TZ=America/Caracas \
+            -p 3000:3000 \
+            --memory="14g" \
+            --memory-swap="14g" \
+            --shm-size="4gb" \
+            lscr.io/linuxserver/webtop:ubuntu-xfce
+            
+          echo "Webtop (XFCE) arrancando... esperando estabilidad..."
+          sleep 15
+
+      - name: "3. Configurar Tienda, Wine y Sober (Roblox)"
+        run: |
+          echo "Instalando paquetes y Sober..."
+          # Ejecutamos comandos como root dentro del contenedor
+          docker exec -u 0 webtop bash -c "
+            # 1. Actualizar repositorios
+            apt-get update
+            
+            # 2. Instalar Flatpak y Tienda de Software
+            apt-get install -y flatpak gnome-software gnome-software-plugin-flatpak
+            
+            # 3. Configurar Flathub
+            flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+            
+            # 4. Instalar Wine (32 y 64 bits)
+            dpkg --add-architecture i386
+            apt-get update
+            apt-get install -y wine64 wine32
+            
+            # 5. Instalar SOBER (Roblox) - Método Directo
+            # Usamos el enlace directo para asegurar que se instale aunque no salga en el buscador
+            flatpak install -y --noninteractive https://sober.vinegarhq.org/sober.flatpakref
+            
+            # Limpieza
+            apt-get clean
+          "
+          echo "Instalación completada."
+
+      - name: "4. Crear Túnel Cloudflare (Mantener Vivo)"
+        run: |
+          echo "---------------------------------------------------------"
+          echo " INSTRUCCIONES:"
+          echo " 1. Espera a que carguen los logs abajo."
+          echo " 2. Busca la URL que termina en 'trycloudflare.com'."
+          echo " 3. Entra a esa URL para ver tu escritorio."
+          echo "---------------------------------------------------------"
+          echo " NOTA: Busca 'Sober' en el menú (sección Juegos o Accesorios)."
+          echo "---------------------------------------------------------"
+          
+          # Túnel Cloudflare manteniendo la sesión viva
+          docker run --rm --net=host cloudflare/cloudflared:latest tunnel --url http://localhost:3000
